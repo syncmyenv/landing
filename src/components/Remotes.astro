@@ -1,0 +1,112 @@
+---
+// Where your ciphertext can live. Keep `status` honest — update as things ship.
+type Remote = {
+  id: string;
+  name: string;
+  price: string;
+  status: string;
+  cmds: string[];
+  pros: string[];
+  cons: string[];
+  cta?: { label: string; href: string };
+  featured?: boolean;
+};
+
+const WAITLIST_URL = 'https://github.com/syncmyenv'; // TODO: real waitlist form
+
+const remotes: Remote[] = [
+  {
+    id: 'local',
+    name: 'local',
+    price: 'free',
+    status: 'building',
+    cmds: ['sme init'],
+    pros: ['encrypted vault, history, restore', 'zero network, zero account'],
+    cons: ['one disk = one point of failure'],
+  },
+  {
+    id: 'byo',
+    name: 'bring your own storage',
+    price: 'free',
+    status: 'building',
+    cmds: ['sme remote add nas /Volumes/nas/sme', 'sme remote add r2 s3://my-bucket'],
+    pros: ['icloud · dropbox · nas · s3 · r2 · webdav', 'multi-device sync & disaster recovery'],
+    cons: ['no web dashboard or share links'],
+  },
+  {
+    id: 'selfhost',
+    name: 'self-hosted server',
+    price: 'free',
+    status: 'planned',
+    cmds: ['docker run -p 8080:8080 syncmyenv/server', 'sme remote add home https://env.home.lan'],
+    pros: ['dashboard, devices, share links', 'same code that runs our cloud'],
+    cons: ['you run it: tls, backups, updates'],
+  },
+  {
+    id: 'cloud',
+    name: 'syncmyenv cloud',
+    price: 'paid',
+    status: 'waitlist',
+    cmds: ['sme login'],
+    pros: ['zero setup, dashboard, share links', 'longer history, managed backups', 'funds the open-source core'],
+    cons: [],
+    cta: { label: 'join the waitlist →', href: WAITLIST_URL },
+    featured: true,
+  },
+];
+---
+<div class="remotes">
+  {remotes.map((r) => (
+    <article class:list={['remote', { featured: r.featured }]} id={`remote-${r.id}`}>
+      <header>
+        <h3><span class="dim">[</span>{r.name}<span class="dim">]</span></h3>
+        <span class:list={['price', r.price === 'free' ? 'g' : 'a']}>{r.price}</span>
+      </header>
+      <span class:list={['status', `s-${r.status}`]}>{r.status}</span>
+      <pre class="cmds"><code>{r.cmds.map((c) => (<Fragment><span class="g">$</span> {c}{'\n'}</Fragment>))}</code></pre>
+      <ul>
+        {r.pros.map((p) => <li><span class="g">+</span> {p}</li>)}
+        {r.cons.map((c) => <li class="con"><span class="r">-</span> {c}</li>)}
+      </ul>
+      {r.cta && <a class="cta" href={r.cta.href}>{r.cta.label}</a>}
+    </article>
+  ))}
+</div>
+
+<style>
+  .remotes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .remote {
+    display: flex; flex-direction: column; gap: 12px;
+    background: #05070a; border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px; min-width: 0;
+  }
+  .remote.featured { border-color: rgba(61, 220, 132, 0.45); box-shadow: 0 0 0 1px rgba(61, 220, 132, 0.12), 0 20px 50px -25px rgba(61, 220, 132, 0.35); }
+  header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  h3 { margin: 0; font-size: 14px; font-weight: 700; }
+  .price { font-size: 13px; font-weight: 700; }
+  .status {
+    align-self: flex-start; font-size: 11px; padding: 1px 8px; border-radius: 99px;
+    border: 1px solid var(--border); color: var(--dim);
+  }
+  .s-building { color: var(--cyan); border-color: rgba(86, 200, 232, 0.35); }
+  .s-waitlist { color: var(--amber); border-color: rgba(245, 185, 66, 0.35); }
+  .cmds {
+    margin: 0; padding: 10px 12px; background: var(--panel); border-radius: 6px;
+    font-size: 11.5px; line-height: 1.7; overflow-x: auto; scrollbar-width: thin;
+  }
+  ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; font-size: 12.5px; color: #aab4c3; }
+  li.con { color: var(--dim); }
+  .cta {
+    margin-top: auto; text-align: center; font-size: 13px; font-weight: 600;
+    color: var(--bg); background: var(--green); border-radius: 6px; padding: 8px 10px;
+  }
+  .cta:hover { text-decoration: none; filter: brightness(1.08); }
+  @media (max-width: 760px) {
+    .remotes { grid-template-columns: minmax(0, 1fr); }
+    .cmds { font-size: 10.5px; padding: 10px; }
+  }
+</style>

@@ -1,0 +1,144 @@
+---
+// Animated shell session. Output lines may contain trusted inline HTML for colors.
+type Step = { cmd: string; out?: string[]; comment?: string };
+
+const steps: Step[] = [
+  {
+    cmd: 'sme scan ~/Projects',
+    out: [
+      '<span class="dim">found 5 environment files</span>',
+      '<span class="dim">PROJECT     FILE                  GIT</span>',
+      'spotify     spotify/.env          <span class="g">yes</span>',
+      'spotify     spotify/.env.local    <span class="g">yes</span>',
+      'spot-stat   spot-stat/.env        <span class="g">yes</span>',
+      'mongo-tool  mongo-tool/.env       <span class="dim">-</span>',
+      'api         api/.env.production   <span class="g">yes</span>',
+    ],
+  },
+  {
+    cmd: 'sme protect --all',
+    out: [
+      '<span class="g">✓</span> 5 files sealed → vault <span class="dim">(age/X25519)</span>',
+      '<span class="g">✓</span> daemon watching 4 dirs <span class="dim">(pid 4242)</span>',
+    ],
+  },
+  {
+    cmd: 'echo "DEBUG=1" >> spotify/.env',
+    out: ['<span class="c">[daemon]</span> spotify/.env → rev <span class="a">4</span> <span class="dim">· synced 212ms</span>'],
+  },
+  { cmd: 'rm spotify/.env', comment: '# oops', out: [] },
+  {
+    cmd: 'sme restore spotify/.env',
+    out: ['<span class="g">✓</span> restored spotify/.env <span class="dim">(rev 4, 3s ago)</span>'],
+  },
+];
+
+const esc = (s: string) => s.replaceAll('&', '&amp;').replaceAll('\u003c', '&lt;').replaceAll('>', '&gt;');
+const PS = '<span class="ps">❯ </span>';
+const staticHtml =
+  steps
+    .map((s) =>
+      [PS + esc(s.cmd) + (s.comment ? ` <span class="dim">${esc(s.comment)}</span>` : ''), ...(s.out ?? [])].join('\n')
+    )
+    .join('\n') +
+  '\n' + PS + '<span class="cursor"></span>';
+---
+<div class="term" data-steps={JSON.stringify(steps)}>
+  <div class="bar">
+    <span class="dot r"></span><span class="dot a"></span><span class="dot g"></span>
+    <span class="title">chinthaka@dev: ~/Projects — zsh</span>
+  </div>
+  <pre class="screen" aria-label="Example syncmyenv terminal session"><code set:html={staticHtml} /></pre>
+</div>
+
+<script>
+  type Step = { cmd: string; out?: string[]; comment?: string };
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const PS = '\u003cspan class="ps">❯ \u003c/span>';
+  const CURSOR = '\u003cspan class="cursor">\u003c/span>';
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  for (const term of document.querySelectorAll<HTMLElement>('.term')) {
+    if (reduced) continue;
+    const steps: Step[] = JSON.parse(term.dataset.steps ?? '[]');
+    const code = term.querySelector('code')!;
+    const screen = term.querySelector<HTMLElement>('.screen')!;
+    screen.style.minHeight = `${screen.offsetHeight}px`;
+
+    const line = (html = '') => {
+      const el = document.createElement('span');
+      el.innerHTML = html;
+      code.appendChild(el);
+      code.appendChild(document.createTextNode('\n'));
+      return el;
+    };
+
+    const run = async () => {
+      while (true) {
+        code.textContent = '';
+        for (const s of steps) {
+          const row = line(PS);
+          const typed = document.createElement('span');
+          const cur = document.createElement('span');
+          cur.className = 'cursor';
+          row.append(typed, cur);
+          await sleep(500);
+          for (const ch of s.cmd) {
+            typed.textContent += ch;
+            await sleep(18 + Math.random() * 45);
+          }
+          if (s.comment) {
+            const c = document.createElement('span');
+            c.className = 'dim';
+            c.textContent = ' ' + s.comment;
+            row.insertBefore(c, cur);
+          }
+          await sleep(300);
+          cur.remove();
+          const outs: string[] = s.out || [];
+          for (const o of outs) {
+            line(o);
+            await sleep(70);
+          }
+        }
+        const end = line(PS + CURSOR);
+        await sleep(6000);
+        end.remove();
+      }
+    };
+
+    // start when visible
+    new IntersectionObserver((entries, obs) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        obs.disconnect();
+        run();
+      }
+    }).observe(term);
+  }
+</script>
+
+<style>
+  .term {
+    background: #05070a;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(61, 220, 132, 0.04);
+    overflow: hidden;
+    text-align: left;
+  }
+  .bar {
+    display: flex; align-items: center; gap: 7px;
+    padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  .dot { width: 11px; height: 11px; border-radius: 50%; opacity: 0.85; }
+  .dot.r { background: var(--red); }
+  .dot.a { background: var(--amber); }
+  .dot.g { background: var(--green); }
+  .title { margin-left: 10px; font-size: 12px; color: var(--dim); }
+  .screen {
+    margin: 0; padding: 18px 20px; font-size: 13.5px; line-height: 1.75;
+    overflow-x: auto; white-space: pre;
+  }
+  @media (max-width: 600px) { .screen { font-size: 12px; padding: 14px; } }
+  .screen :global(.ps) { color: var(--green); }
+</style>

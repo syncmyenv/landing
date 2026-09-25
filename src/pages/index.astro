@@ -1,0 +1,255 @@
+---
+import Base from '../layouts/Base.astro';
+import Terminal from '../components/Terminal.astro';
+import CipherView from '../components/CipherView.astro';
+import Remotes from '../components/Remotes.astro';
+
+const INSTALL = 'go install github.com/syncmyenv/core/cmd/syncmyenv@latest';
+
+const pipeline = ` ~/app/.env ──save──▶ fsnotify ──500ms──▶ hmac-sha256 ──Δ?──▶ age(X25519)
+                                                                  │
+  remote ◀── sync queue ◀── vault.db ◀── revision n+1 ◀───────────┘
+  (ciphertext only)`;
+const keys = ` master password ──argon2id──▶ KEK₁ ─┐
+                                     ├──wrap──▶ vault identity  (X25519 sk)
+ recovery key ────hkdf───────▶ KEK₂ ─┘
+                                                       │ derive
+                                                       ▼
+                                                vault recipient (X25519 pk)
+                                                       │
+ daemon seals each revision ◀──────────────────────────┘
+ (it holds the public key only — nothing to steal)`;
+
+// tiny syntax highlighter for the ascii diagrams
+const hl = (s: string) =>
+  s
+    .replaceAll('&', '&amp;').replaceAll('\u003c', '&lt;').replaceAll('>', '&gt;')
+    .replace(/([─│┘┐├▶◀▼]+)/g, '<span class="dim">$1</span>')
+    .replace(/\b(argon2id|hkdf|wrap|derive|save|500ms|Δ\?)/g, '<span class="a">$1</span>')
+    .replace(/(KEK₁|KEK₂|X25519 sk|X25519 pk|X25519)/g, '<span class="c">$1</span>')
+    .replace(/(~\/app\/\.env|master password|recovery key)/g, '<span class="g">$1</span>')
+    .replace(/\((ciphertext only|it holds[^)]*)\)/g, '<span class="dim">($1)</span>');
+
+const specs: [string, string][] = [
+  ['kdf', 'argon2id <span class="dim">m=64MiB t=3 p=4</span>'],
+  ['kem', 'X25519 <span class="dim">(age v1)</span>'],
+  ['aead', 'ChaCha20-Poly1305'],
+  ['dedup', 'HMAC-SHA256 <span class="dim">— never a bare hash of your secrets</span>'],
+  ['metadata', 'encrypted <span class="dim">— paths &amp; project names too</span>'],
+  ['store', 'sqlite <span class="dim">(cgo-free)</span>'],
+  ['binary', 'single static go binary <span class="dim">darwin · linux · windows</span>'],
+  ['telemetry', '<span class="g">none</span>'],
+  ['plaintext → cloud', '<span class="g">0 bytes</span>'],
+];
+---
+<Base>
+  <header class="container nav">
+    <a href="/" class="logo"><span class="g">sme</span><span class="dim">@</span>syncmyenv<span class="dim">:~$</span></a>
+    <nav>
+      <a href="#why">./why</a>
+      <a href="#how">./how</a>
+      <a href="#crypto">./crypto</a>
+      <a href="#remotes">./remotes</a>
+      <a href="#man">man</a>
+      <a href="https://github.com/syncmyenv">github↗</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="container hero">
+      <div class="copy">
+        <p class="kicker dim">// v0.1.0-alpha · written in go · local-first · e2e encrypted</p>
+        <h1>Never lose a<br /><span class="g">.env</span> file again<span class="cursor" aria-hidden="true"></span></h1>
+        <p class="lead">
+          <span class="dim">$</span> syncmyenv finds your env files, versions every save, and ships{' '}
+          <em>ciphertext only</em> to your backup. Format your laptop. <code class="g">sme restore</code>. Done.
+        </p>
+        <div class="install">
+          <code><span class="dim">$</span> {INSTALL}</code>
+          <button type="button" data-copy={INSTALL} aria-label="Copy install command">copy</button>
+        </div>
+        <p class="alias dim"># alias: <code>sme</code> · no account needed for local mode</p>
+      </div>
+      <Terminal />
+    </section>
+
+    <section id="why" class="container section">
+      <h2 class="section-title"><b>❯</b> cat /proc/why</h2>
+      <div class="why">
+        <pre class="block"><code><span class="g">❯</span> git check-ignore -v .env
+.gitignore:3:.env    .env
+<span class="g">❯</span> ls ~/backups/**/.env*
+<span class="r">zsh: no matches found: ~/backups/**/.env*</span>
+<span class="g">❯</span> echo $?
+<span class="a">1</span></code></pre>
+        <div class="prose">
+          <p>Your <code>.env</code> files are gitignored — correctly. Which means they're backed up by… <span class="r">nothing</span>.</p>
+          <p>They live in 30 folders, differ per machine, and vanish the day your SSD does. Password managers want you to copy-paste. Secrets managers want you to rewrite your app.</p>
+          <p class="g">syncmyenv wants neither. It's Time Machine for dotenv.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="how" class="container section">
+      <h2 class="section-title"><b>❯</b> sme daemon --explain</h2>
+      <pre class="block diagram"><code set:html={hl(pipeline)} /></pre>
+      <ul class="facts">
+        <li><span class="g">+</span> watches parent dirs, so atomic saves from vim/vscode don't drop the watch</li>
+        <li><span class="g">+</span> every change = a full encrypted snapshot. <code>sme history</code>, <code>sme restore --version 3</code></li>
+        <li><span class="g">+</span> offline-first. sync is a queue, not a dependency</li>
+        <li><span class="g">+</span> conflicts merge per key — only same-key edits ask you</li>
+      </ul>
+    </section>
+
+    <section id="crypto" class="container section">
+      <h2 class="section-title"><b>❯</b> sme doctor --crypto</h2>
+      <div class="crypto">
+        <div>
+          <CipherView />
+          <p class="hint dim">↑ toggle it. that's the whole threat model.</p>
+        </div>
+        <dl class="specs">
+          {specs.map(([k, v]) => (<><dt>{k}</dt><dd set:html={v} /></>))}
+        </dl>
+      </div>
+      <pre class="block diagram"><code set:html={hl(keys)} /></pre>
+    </section>
+
+    <section id="remotes" class="container section">
+      <h2 class="section-title"><b>❯</b> sme remote --list</h2>
+      <p class="remotes-lead">
+        Every remote receives the same bytes: <span class="m">ciphertext</span>. So pick on convenience, not trust.{' '}
+        <span class="dim">Self-hosted and cloud run the exact same server code.</span>
+      </p>
+      <Remotes />
+    </section>
+
+    <section id="man" class="container section">
+      <h2 class="section-title"><b>❯</b> man syncmyenv</h2>
+      <pre class="block man"><code><span class="dim">SYNCMYENV(1)                  User Commands                  SYNCMYENV(1)</span>
+
+<b>NAME</b>
+       syncmyenv, sme - local-first encrypted backup &amp; sync for .env files
+
+<b>SYNOPSIS</b>
+       <b>sme</b> <u>command</u> [<u>flags</u>] [<u>path</u>...]
+
+<b>COMMANDS</b>
+       <b class="g">scan</b> <u>dir</u>...         discover env files (skips node_modules, .git, templates)
+       <b class="g">protect</b> <u>path</u>...     seal files into the local vault and start watching
+       <b class="g">status</b>              vault, daemon and sync state
+       <b class="g">history</b> <u>file</u>        list revisions (values hidden unless --show)
+       <b class="g">restore</b> [<u>file</u>]      restore one file, a project, or everything
+       <b class="g">sync</b>                push/pull ciphertext to your backend
+       <b class="g">share</b> <u>file</u>          expiring, read-only link; key lives in the #fragment
+       <b class="g">daemon</b>              run the watcher in the background
+
+<b>BACKENDS</b>
+       folder (icloud/dropbox/nas) · s3 · r2 · webdav
+       self-hosted server · syncmyenv cloud
+
+<b>FILES</b>
+       ~/.syncmyenv/vault.db    local encrypted vault
+
+<b>ENVIRONMENT</b>
+       SYNCMYENV_HOME           override vault location
+
+<b>BUGS</b>
+       none known. yet. <a href="https://github.com/syncmyenv/core/issues">github.com/syncmyenv/core/issues</a>
+
+<b>SEE ALSO</b>
+       git(1), age(1), your-last-hard-drive-failure(7)
+
+<span class="dim">syncmyenv 0.1.0-alpha               2026                        SYNCMYENV(1)</span></code></pre>
+    </section>
+  </main>
+
+  <footer class="container footer">
+    <span><span class="dim">[process exited with code</span> <span class="g">0</span><span class="dim">]</span></span>
+    <span class="dim">© {new Date().getFullYear()} syncmyenv · made in sri lanka</span>
+  </footer>
+</Base>
+
+<script>
+  for (const box of document.querySelectorAll<HTMLElement>('.install')) {
+    const code = box.querySelector('code')!;
+    const check = () => box.classList.toggle('overflows', code.scrollWidth > code.clientWidth + 1);
+    new ResizeObserver(check).observe(code);
+    code.addEventListener('scroll', () => {
+      // drop the fade once scrolled to the end
+      box.classList.toggle('overflows', code.scrollLeft + code.clientWidth < code.scrollWidth - 1);
+    });
+  }
+
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-copy]')) {
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(btn.dataset.copy ?? '');
+        btn.textContent = 'copied ✓';
+      } catch {
+        btn.textContent = 'ctrl+c';
+      }
+      setTimeout(() => (btn.textContent = 'copy'), 1500);
+    });
+  }
+</script>
+
+<style>
+  .nav { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-block: 18px; flex-wrap: wrap; }
+  .nav nav { display: flex; gap: 18px; font-size: 13px; flex-wrap: wrap; }
+  .nav nav a { color: var(--dim); }
+  .nav nav a:hover { color: var(--green); }
+  .logo { color: var(--text); font-weight: 700; }
+
+  .hero { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 40px; align-items: center; padding-block: 72px 88px; }
+  .kicker { font-size: 12.5px; margin: 0 0 14px; }
+  h1 { font-size: clamp(2.1rem, 4.6vw, 3.4rem); line-height: 1.08; margin: 0 0 20px; letter-spacing: -0.02em; font-weight: 800; }
+  .lead { color: #aab4c3; margin: 0 0 28px; max-width: 520px; }
+  .lead em { color: var(--text); font-style: normal; border-bottom: 1px dashed var(--magenta); }
+  .install {
+    display: flex; align-items: center; gap: 10px; max-width: 100%;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 8px 8px 12px;
+  }
+  .install code {
+    font-size: 12px; white-space: nowrap; flex: 1; min-width: 0;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  /* fade the cut-off edge instead of showing a scrollbar (only when it overflows) */
+  .install.overflows code { mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+  .install code::-webkit-scrollbar { display: none; }
+  .install button {
+    font: inherit; font-size: 12px; color: var(--bg); background: var(--green);
+    border: 0; border-radius: 5px; padding: 4px 10px; cursor: pointer; flex-shrink: 0;
+  }
+  .alias { font-size: 12.5px; margin: 10px 0 0; }
+
+  .block {
+    margin: 0; background: #05070a; border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px 22px; font-size: 13px; line-height: 1.75; overflow-x: auto;
+  }
+  .why { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: center; }
+  .prose p { margin: 0 0 14px; color: #aab4c3; }
+  .prose p.g { color: var(--green); }
+  .facts { list-style: none; padding: 0; margin: 28px 0 0; display: grid; gap: 6px; color: #aab4c3; font-size: 14px; }
+  .facts code { color: var(--text); }
+
+  .crypto { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 40px; align-items: start; margin-bottom: 32px; }
+  .hint { font-size: 12.5px; margin: 10px 0 0; }
+  .specs { display: grid; grid-template-columns: max-content 1fr; gap: 6px 20px; margin: 0; font-size: 13.5px; }
+  .specs dt { color: var(--dim); }
+  .specs dt::after { content: ':'; }
+  .specs dd { margin: 0; }
+
+  .remotes-lead { margin: -8px 0 24px; color: #aab4c3; max-width: 760px; }
+
+  .man b { color: var(--text); font-weight: 700; }
+  .man b.g { color: var(--green); }
+  .man u { text-decoration-color: var(--dim); text-underline-offset: 3px; color: var(--cyan); }
+
+  .footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding-block: 40px 56px; font-size: 13px; border-top: 1px dashed var(--border); }
+
+  @media (max-width: 880px) {
+    .hero, .why, .crypto { grid-template-columns: minmax(0, 1fr); }
+    .hero { padding-block: 40px 56px; gap: 36px; }
+  }
+</style>

@@ -1,0 +1,102 @@
+---
+import { randomBytes } from 'node:crypto';
+
+const plain = `# spotify/.env
+DATABASE_URL=postgres://app:hunter2@db:5432/spotify
+REDIS_URL=redis://localhost:6379
+SPOTIFY_CLIENT_ID=4f1c9e07b2d84a3c
+SPOTIFY_CLIENT_SECRET=sk_live_not_a_real_secret_lol
+JWT_SECRET=correct-horse-battery-staple`;
+
+// Fresh "ciphertext" every build — shaped like an age armored file.
+const b64 = randomBytes(330).toString('base64');
+const lines = b64.match(/.{1,64}/g) ?? [];
+const cipher = ['-----BEGIN AGE ENCRYPTED FILE-----', ...lines, '-----END AGE ENCRYPTED FILE-----'].join('\n');
+---
+<div class="cv" data-plain={plain} data-cipher={cipher}>
+  <div class="tabs" role="tablist" aria-label="Who is looking">
+    <button role="tab" aria-selected="true" data-view="plain">you see</button>
+    <button role="tab" aria-selected="false" data-view="cipher">server sees</button>
+    <span class="meta dim" data-meta>~/Projects/spotify/.env · 0600 · local</span>
+  </div>
+  <pre class="pane"><code data-out>{plain}</code></pre>
+</div>
+
+<script>
+  const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  for (const cv of document.querySelectorAll<HTMLElement>('.cv')) {
+    const plain = cv.dataset.plain ?? '';
+    const cipher = cv.dataset.cipher ?? '';
+    const out = cv.querySelector<HTMLElement>('[data-out]')!;
+    const meta = cv.querySelector<HTMLElement>('[data-meta]')!;
+    const tabs = [...cv.querySelectorAll<HTMLButtonElement>('[data-view]')];
+    out.parentElement!.style.minHeight = `${Math.max(plain.split('\n').length, cipher.split('\n').length) * 1.75 + 2.5}em`;
+    let raf = 0;
+
+    const morph = (from: string, to: string) => {
+      cancelAnimationFrame(raf);
+      if (reduced) { out.textContent = to; return; }
+      // Morph line by line so line breaks never move and the pane can't reflow.
+      const fromLines = from.split('\n');
+      const toLines = to.split('\n');
+      const rows = Math.max(fromLines.length, toLines.length);
+      const start = performance.now();
+      const dur = 700;
+      const tick = (t: number) => {
+        const p = Math.min(1, (t - start) / dur);
+        const lines: string[] = [];
+        for (let r = 0; r < rows; r++) {
+          const f = fromLines[r] ?? '';
+          const g = toLines[r] ?? '';
+          const len = Math.max(f.length, g.length);
+          let s = '';
+          for (let i = 0; i < len; i++) {
+            const settle = (i / Math.max(len, 1)) * 0.6 + (r / rows) * 0.2;
+            if (p >= settle + 0.2) s += g[i] ?? '';
+            else if (p >= settle) s += g[i] ? CHARS[(Math.random() * CHARS.length) | 0] : '';
+            else s += f[i] ?? '';
+          }
+          lines.push(s);
+        }
+        out.textContent = lines.join('\n');
+        if (p < 1) raf = requestAnimationFrame(tick);
+        else out.textContent = to;
+      };
+      raf = requestAnimationFrame(tick);
+    };
+
+    let view = 'plain';
+    for (const tab of tabs) {
+      tab.addEventListener('click', () => {
+        const next = tab.dataset.view!;
+        if (next === view) return;
+        tabs.forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
+        morph(view === 'plain' ? plain : cipher, next === 'plain' ? plain : cipher);
+        cv.classList.toggle('is-cipher', next === 'cipher');
+        meta.textContent = next === 'plain'
+          ? '~/Projects/spotify/.env · 0600 · local'
+          : `blob/7f3a…e91c · ${cipher.length} bytes · path encrypted too`;
+        view = next;
+      });
+    }
+  }
+</script>
+
+<style>
+  .cv { min-width: 0; border: 1px solid var(--border); border-radius: 10px; background: #05070a; overflow: hidden; }
+  .tabs {
+    display: flex; gap: 4px; align-items: center; flex-wrap: wrap;
+    padding: 8px; background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  .tabs button {
+    font: inherit; font-size: 12.5px; color: var(--dim); background: none;
+    border: 1px solid transparent; border-radius: 6px; padding: 4px 10px; cursor: pointer;
+  }
+  .tabs button[aria-selected='true'] { color: var(--green); border-color: var(--border); background: var(--bg); }
+  .tabs button:focus-visible { outline: 1px solid var(--green); }
+  .meta { margin-left: auto; font-size: 12px; padding-right: 6px; }
+  .pane { margin: 0; padding: 18px 20px; font-size: 13px; line-height: 1.75; overflow-x: auto; }
+  .is-cipher .pane { color: var(--magenta); }
+</style>
