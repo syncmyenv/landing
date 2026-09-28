@@ -62,13 +62,21 @@ detect_platform() {
 
 resolve_version() {
 	[ "$VERSION" != latest ] && return
+	# 1st: the /releases/latest redirect (no API rate limit); 2nd: the API
+	# (for proxies that block github.com pages but not the API, and for wget).
+	VERSION=""
 	if has curl; then
 		url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" 2>/dev/null || true)
 		VERSION=${url##*/}
-	else
-		VERSION=$(wget -qO- "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null |
-			sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1)
 	fi
+	case "$VERSION" in
+		v[0-9]*) ;;
+		*)
+			api="https://api.github.com/repos/$REPO/releases/latest"
+			if has curl; then json=$(curl -fsSL "$api" 2>/dev/null || true); else json=$(wget -qO- "$api" 2>/dev/null || true); fi
+			VERSION=$(printf '%s' "$json" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1)
+			;;
+	esac
 	case "$VERSION" in
 		v[0-9]*) ;;
 		*) die "no release published yet — for now: go install github.com/syncmyenv/core/cmd/syncmyenv@latest" ;;
