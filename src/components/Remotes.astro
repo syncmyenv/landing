@@ -37,10 +37,11 @@ const remotes: Remote[] = [
     id: 'selfhost',
     name: 'self-hosted server',
     price: 'free',
-    status: 'planned',
-    cmds: ['docker run -p 8080:8080 syncmyenv/server', 'sme remote add home https://env.home.lan'],
-    pros: ['dashboard, devices, share links', 'same code that runs our cloud'],
-    cons: ['you run it: tls, backups, updates'],
+    status: 'beta',
+    cmds: ['git clone https://github.com/syncmyenv/self-hosted', 'docker compose up -d', 'sme login env.example.com'],
+    pros: ['dashboard, devices · auto-HTTPS via Caddy', 'same code that runs our cloud', 'one sqlite file · online backups'],
+    cons: ['you run it: updates, backups'],
+    cta: { label: 'self-hosting guide →', href: 'https://github.com/syncmyenv/self-hosted' },
   },
   {
     id: 'cloud',
@@ -68,7 +69,7 @@ const remotes: Remote[] = [
         {r.pros.map((p) => <li><span class="g">+</span> {p}</li>)}
         {r.cons.map((c) => <li class="con"><span class="r">-</span> {c}</li>)}
       </ul>
-      {r.cta && <a class="cta" href={r.cta.href}>{r.cta.label}</a>}
+      {r.cta && <a class:list={['cta', { ghost: !r.featured }]} href={r.cta.href}>{r.cta.label}</a>}
     </article>
   ))}
 </div>
@@ -94,6 +95,7 @@ const remotes: Remote[] = [
   }
   .s-building { color: var(--cyan); border-color: rgba(86, 200, 232, 0.35); }
   .s-waitlist { color: var(--amber); border-color: rgba(245, 185, 66, 0.35); }
+  .s-beta { color: var(--green); border-color: rgba(61, 220, 132, 0.35); }
   .cmds {
     margin: 0; padding: 10px 12px; background: var(--panel); border-radius: 6px;
     font-size: 11.5px; line-height: 1.7; overflow-x: auto; scrollbar-width: thin;
@@ -105,6 +107,7 @@ const remotes: Remote[] = [
     color: var(--bg); background: var(--green); border-radius: 6px; padding: 8px 10px;
   }
   .cta:hover { text-decoration: none; filter: brightness(1.08); }
+  .cta.ghost { background: none; color: var(--green); border: 1px solid var(--border); }
   @media (max-width: 760px) {
     .remotes { grid-template-columns: minmax(0, 1fr); }
     .cmds { font-size: 10.5px; padding: 10px; }
