@@ -4,7 +4,11 @@ import Terminal from '../components/Terminal.astro';
 import CipherView from '../components/CipherView.astro';
 import Remotes from '../components/Remotes.astro';
 
-const INSTALL = 'go install github.com/syncmyenv/core/cmd/syncmyenv@latest';
+const INSTALL = [
+  { id: 'brew', cmd: 'brew install syncmyenv/tap/sme', note: 'macOS & Linux · Homebrew' },
+  { id: 'curl', cmd: 'curl -fsSL https://syncmyenv.com/install.sh | sh', note: 'verifies sha256 + sigstore · <a href="/install.sh">read it first</a>' },
+  { id: 'go', cmd: 'go install github.com/syncmyenv/core/cmd/syncmyenv@latest', note: 'from source · Go 1.24+' },
+];
 
 const pipeline = ` ~/app/.env ──save──▶ fsnotify ──500ms──▶ hmac-sha256 ──Δ?──▶ age(X25519)
                                                                   │
@@ -64,11 +68,20 @@ const specs: [string, string][] = [
           <span class="dim">$</span> syncmyenv finds your env files, versions every save, and ships{' '}
           <em>ciphertext only</em> to your backup. Format your laptop. <code class="g">sme restore</code>. Done.
         </p>
-        <div class="install">
-          <code><span class="dim">$</span> {INSTALL}</code>
-          <button type="button" data-copy={INSTALL} aria-label="Copy install command">copy</button>
+        <div class="install-tabs" role="tablist" aria-label="Install method">
+          {INSTALL.map((m, i) => (
+            <button type="button" role="tab" aria-selected={i === 0 ? 'true' : 'false'} data-method={m.id}>{m.id}</button>
+          ))}
         </div>
-        <p class="alias dim"># alias: <code>sme</code> · no account needed for local mode</p>
+        <div class="install">
+          {INSTALL.map((m, i) => (
+            <code data-cmd={m.id} hidden={i !== 0}><span class="dim">$</span> {m.cmd}</code>
+          ))}
+          <button type="button" data-copy={INSTALL[0].cmd} aria-label="Copy install command">copy</button>
+        </div>
+        {INSTALL.map((m, i) => (
+          <p class="alias dim" data-note={m.id} hidden={i !== 0}># <Fragment set:html={m.note} /></p>
+        ))}
       </div>
       <Terminal />
     </section>
@@ -171,15 +184,34 @@ const specs: [string, string][] = [
 </Base>
 
 <script>
-  for (const box of document.querySelectorAll<HTMLElement>('.install')) {
-    const code = box.querySelector('code')!;
-    const check = () => box.classList.toggle('overflows', code.scrollWidth > code.clientWidth + 1);
+  const box = document.querySelector<HTMLElement>('.install')!;
+  const copyBtn = box.querySelector<HTMLButtonElement>('[data-copy]')!;
+  const visible = () => box.querySelector<HTMLElement>('code:not([hidden])')!;
+  const check = () => {
+    const code = visible();
+    box.classList.toggle('overflows', code.scrollWidth > code.clientWidth + 1);
+  };
+  for (const code of box.querySelectorAll<HTMLElement>('code')) {
     new ResizeObserver(check).observe(code);
     code.addEventListener('scroll', () => {
       // drop the fade once scrolled to the end
       box.classList.toggle('overflows', code.scrollLeft + code.clientWidth < code.scrollWidth - 1);
     });
   }
+
+  // install method tabs: brew / curl / go
+  const tabs = [...document.querySelectorAll<HTMLButtonElement>('[data-method]')];
+  const select = (id: string) => {
+    for (const t of tabs) t.setAttribute('aria-selected', String(t.dataset.method === id));
+    for (const el of document.querySelectorAll<HTMLElement>('[data-cmd], [data-note]')) {
+      el.hidden = (el.dataset.cmd ?? el.dataset.note) !== id;
+    }
+    copyBtn.dataset.copy = visible().textContent?.replace(/^\$\s*/, '') ?? '';
+    check();
+  };
+  for (const t of tabs) t.addEventListener('click', () => select(t.dataset.method!));
+  // Linux without Homebrew is common: default to curl there
+  if (/Linux/.test(navigator.userAgent) && !/Android/.test(navigator.userAgent)) select('curl');
 
   for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-copy]')) {
     btn.addEventListener('click', async () => {
@@ -222,6 +254,15 @@ const specs: [string, string][] = [
     border: 0; border-radius: 5px; padding: 4px 10px; cursor: pointer; flex-shrink: 0;
   }
   .alias { font-size: 12.5px; margin: 10px 0 0; }
+  .alias :global(a) { color: var(--dim); text-decoration: underline; text-underline-offset: 3px; }
+  .install-tabs { display: flex; gap: 2px; margin-bottom: 8px; }
+  .install-tabs button {
+    font: inherit; font-size: 12px; color: var(--dim); background: none; cursor: pointer;
+    border: 1px solid transparent; border-radius: 6px; padding: 2px 10px;
+  }
+  .install-tabs button[aria-selected='true'] { color: var(--green); border-color: var(--border); background: var(--panel); }
+  .install-tabs button:focus-visible { outline: 1px solid var(--green); }
+  .install code[hidden] { display: none; }
 
   .block {
     margin: 0; background: #05070a; border: 1px solid var(--border); border-radius: 10px;
